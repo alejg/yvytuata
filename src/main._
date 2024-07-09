@@ -1,0 +1,101 @@
+// Cargo.toml dependencies:
+// [dependencies]
+// nannou = "0.18.1"
+// cpal = "0.14.2"
+// noise = "0.8.2"
+
+use std::num::NonZeroU32;
+
+use nannou::noise::{Fbm, NoiseFn};
+use nannou::prelude::*;
+
+fn main() {
+    nannou::app(model).update(update).run();
+}
+
+const W : u32 = 600;
+const H : u32 = 450;
+
+struct Model {
+    texture: wgpu::Texture,
+    noise: Fbm,
+    time: f32,
+}
+
+fn model(app: &App) -> Model {
+    let window_id = app.new_window().size(W, H).view(view).build().unwrap();
+    let window = app.window(window_id).unwrap();
+    let texture = wgpu::TextureBuilder::new()
+        .size([W, H])
+        .format(wgpu::TextureFormat::Rgba8Unorm)
+        .usage(wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING)
+        .build(window.device());
+
+    let noise = Fbm::new();
+
+    Model {
+        texture,
+        noise,
+        time: 0.0,
+    }
+}
+
+fn update(app: &App, model: &mut Model, _update: Update) {
+    let x1 = app.main_window();
+ //   let encoder = x1.device().create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("texture_updater") });
+  //  let texture_view = model.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+    let w = W as usize;
+    let h = H as usize;
+    let mut data = vec![0u8; w * h * 4];
+    for y in 0..450 {
+        for x in 0..600 {
+            let nx = x as f64 / 600.0;
+            let ny = y as f64 / 450.0;
+            let nz = model.time as f64 * 0.1;
+            let noise_val = model.noise.get([nx, ny, nz]);
+
+            let color = if noise_val < 0.3 {
+                // Water
+                [15, 22, 12, 40] // Dark ocher
+            } else if noise_val < 0.7 {
+                // Mountains
+                [40, 46, 34, 40] // Medium ocher
+            } else {
+                // Peaks
+                [20, 25, 255, 60] // Light ocher
+            };
+
+            let idx = (y * 600 + x) * 4;
+            data[idx..idx + 4].copy_from_slice(&color);
+        }
+    }
+
+    x1.queue().write_texture(
+        wgpu::ImageCopyTexture {
+            texture: &model.texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &data,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(NonZeroU32::new(600 * 4).unwrap()),
+            rows_per_image: Some(NonZeroU32::new(450).unwrap()),
+        },
+        wgpu::Extent3d {
+            width: 600,
+            height: 450,
+            depth_or_array_layers: 1,
+        },
+    );
+
+    model.time += 0.1;
+}
+
+fn view(app: &App, model: &Model, frame: Frame) {
+    let draw = app.draw();
+    draw.texture(&model.texture);
+    draw.to_frame(app, &frame).unwrap();
+}
